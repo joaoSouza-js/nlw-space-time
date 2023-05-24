@@ -9,6 +9,8 @@ interface GithubAccessTokenResponseProps {
 }
 
 export async  function authRoutes(app: FastifyInstance){
+
+	
 	app.post("/register", async (request, response) => {
 		const requestParamsSchema = z.object({
 			code: z.string()

@@ -1,5 +1,5 @@
 import Fastify from "fastify";
-import { memmoriesRoutes } from "./routes/memories";
+
 import cors from "@fastify/cors";
 import { authRoutes } from "./routes/auth";
 import "dotenv/config";
@@ -8,6 +8,7 @@ import fastifyMultipart from "@fastify/multipart";
 import { uploadRoutes } from "./routes/upload";
 import fastifyStatic from "@fastify/static";
 import { resolve } from "node:path";
+import { memoriesRoutes } from "./routes/memories";
 
 const app = Fastify({
 	logger: true
@@ -29,7 +30,7 @@ app.register(cors, {
 	origin: true
 });
 
-app.register(memmoriesRoutes);
+app.register(memoriesRoutes);
 app.register(authRoutes);
 app.register(uploadRoutes);
 

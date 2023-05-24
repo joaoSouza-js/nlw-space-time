@@ -3,160 +3,136 @@ import { z } from "zod";
 import { prisma } from "../libs/prisma";
 
 
-export async function memmoriesRoutes(app:FastifyInstance) {
+export async function memoriesRoutes(app: FastifyInstance) {
+	app.addHook("preHandler", async (request) => {
+		await request.jwtVerify();
+	});
 
-
-	app.get("/memories", async (request, response) => {
-		
-
-		const  memories = await prisma.memory.findMany({
+	app.get("/memories", async (request) => {
+		const memories = await prisma.memory.findMany({
 			where: {
-				userId: request.user.sub
+				userId: request.user.sub,
 			},
 			orderBy: {
-				createdAt: "asc"
-			}
+				createdAt: "asc",
+			},
 		});
 
-		const memoriesFormated = memories.map(memory => {
-			const excerpt = memory.content.slice(0,115).concat("...");
+		return memories.map((memory) => {
 			return {
 				id: memory.id,
 				coverUrl: memory.coverUrl,
-				excerpt
-        
-
+				excerpt: memory.content.substring(0, 115).concat("..."),
+				createdAt: memory.createdAt,
 			};
 		});
-
-		return response.status(200).send({memories: memoriesFormated});
-
 	});
 
-
-	app.get("/memories/:id", async (request, response) => {
-		const requestParamsSchema = z.object({
-			id: z.string().uuid("id must be a valid uuid"),
+	app.get("/memories/:id", async (request, reply) => {
+		const paramsSchema = z.object({
+			id: z.string().uuid(),
 		});
 
-		
-		const { id } = requestParamsSchema.parse(request.params);
+		const { id } = paramsSchema.parse(request.params);
 
-		
-		
-		const memory = await prisma.memory.findUnique({
+		const memory = await prisma.memory.findUniqueOrThrow({
 			where: {
-				id:id
-			}
+				id,
+			},
 		});
 
-		if(!memory){
-			return response.status(404).send({message: "Memory not found"});
+		if (!memory.IsPublic && memory.userId !== request.user.sub) {
+			return reply.status(401).send();
 		}
 
-		if(!memory.IsPublic && memory.userId !== request.user.sub){
-			return response.status(403).send({message: "You don't have permission to access this memory"});
-		}
-
-
-
-
-		return response.status(200).send(memory);
-
+		return memory;
 	});
 
-	app.post("/memories", async (request, response) => {
-		
-		const requestBodySchema = z.object({
-			content: z.string().min(1, "content must be at least 1 character long"),
-			coverUrl: z.string().url("coverUrl must be a valid url"),
-			isPublic: z.coerce.boolean().default(false),    
-		});
-
-		const memory = requestBodySchema.parse(request.body);
-
-		await prisma.memory.create({
-			data: {
-				content: memory.content,
-				coverUrl: memory.coverUrl,
-				IsPublic: memory.isPublic,
-				userId: request.user.sub
-			}
-		});
-
-		return response.status(201).send({memory});
-
-	});
-    
-	app.put("/memories/:id", async (request, response) => {
-		const requestParamsSchema = z.object({
-			id: z.string().uuid("id must be a valid uuid"),
-		});
-
-		const { id:memmorieId } = requestParamsSchema.parse(request.params);
-
-
-		const requestBodySchema = z.object({
-			content: z.string().min(1, "content must be at least 1 character long"),
-			coverUrl: z.string().url("coverUrl must be a valid url"),
+	app.post("/memories", async (request,response) => {
+		const bodySchema = z.object({
+			content: z.string(),
+			coverUrl: z.string().url(),
 			isPublic: z.coerce.boolean().default(false),
-            
 		});
 
-		const memoryContent = requestBodySchema.parse(request.body);
+		const memoriContent  = bodySchema.parse(request.body);
 
-		const memory = await prisma.memory.findUniqueOrThrow({
-			where: {
-				id:memmorieId
-			},
-		});
+		
 
-		if(memory.userId !== request.user.sub){
-			return response.status(403).send({message: "You don't have permission to access this memory"});
-		}
-
-
-		const updatedMemory = await prisma.memory.update({
-			where: {
-				id:memmorieId
-			},
+		const memory = await prisma.memory.create({
 			data: {
-				content: memoryContent.content,
-				coverUrl: memoryContent.coverUrl,
-				IsPublic: memoryContent.isPublic,
+				content: memoriContent.content,
+				coverUrl: memoriContent.coverUrl,
+				IsPublic: memoriContent.isPublic,
+				userId: request.user.sub,
 			}
-            
 		});
 
-		return updatedMemory;
+		
 
-
-
+		return {memory};
 	});
 
-	app.delete("/memories/:id", async (request,response) => {
-		const requestParamsSchema = z.object({
-			id: z.string().uuid("id must be a valid uuid"),
+	app.put("/memories/:id", async (request, reply) => {
+		const paramsSchema = z.object({
+			id: z.string().uuid(),
 		});
 
-		const { id:memoryId } = requestParamsSchema.parse(request.params);
+		const { id } = paramsSchema.parse(request.params);
 
+		const bodySchema = z.object({
+			content: z.string(),
+			coverUrl: z.string(),
+			isPublic: z.coerce.boolean().default(false),
+		});
 
-		const memory = await prisma.memory.findUniqueOrThrow({
+		const { content, coverUrl, isPublic } = bodySchema.parse(request.body);
+
+		let memory = await prisma.memory.findUniqueOrThrow({
 			where: {
-				id:memoryId
+				id,
 			},
 		});
 
-		if(memory.userId !== request.user.sub){
-			return response.status(403).send({message: "You don't have permission to access this memory"});
+		if (memory.userId !== request.user.sub) {
+			return reply.status(401).send();
+		}
+
+		memory = await prisma.memory.update({
+			where: {
+				id,
+			},
+			data: {
+				content,
+				coverUrl,
+				IsPublic: isPublic,
+			},
+		});
+
+		return memory;
+	});
+
+	app.delete("/memories/:id", async (request, reply) => {
+		const paramsSchema = z.object({
+			id: z.string().uuid(),
+		});
+
+		const { id } = paramsSchema.parse(request.params);
+
+		const memory = await prisma.memory.findUniqueOrThrow({
+			where: {
+				id,
+			},
+		});
+
+		if (memory.userId !== request.user.sub) {
+			return reply.status(401).send();
 		}
 
 		await prisma.memory.delete({
 			where: {
-				id: memoryId
-			}
+				id,
+			},
 		});
-
 	});
 }
